@@ -1,0 +1,15 @@
+# Runtime files
+state
+alive
+*.log
+*.pid
+.launcher.pid
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
