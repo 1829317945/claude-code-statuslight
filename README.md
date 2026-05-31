@@ -1,47 +1,51 @@
-# Claude Code StatusLight
+# Claude Code StatusLight · 状态红绿灯
 
-A desktop traffic-light indicator that shows Claude Code's real-time status — always visible, always on top.
+> 中文 | [English](#english)
 
-```
-🔴 ── Red (blinking)  = Needs your permission
-🟡 ── Yellow (solid)  = Thinking / running
-🟢 ── Green (flash x6 then solid) = Task complete
-```
-
-The three colored dots float at the top-left of your screen, **above all other windows** — even full-screen browsers and IDEs. They appear when Claude Code starts and disappear when it exits.
-
-## How It Works
+一个桌面状态指示灯，实时显示 Claude Code 的运行状态——始终可见，始终置顶。
 
 ```
-Claude Code hooks  ──write──▶  state file (busy|wait|done|idle)
-watchdog.py        ──write──▶  alive heartbeat (timestamp)
-
-PowerShell/WPF     ──reads──▶  both files, renders 3 dots
-(always-on-top)
+🔴 ── 红灯闪烁      = 需要你的授权/选择
+🟡 ── 黄灯常亮      = AI 正在思考/运行
+🟢 ── 绿灯闪6次常亮 = 任务完成
 ```
 
-- **Hook scripts are async and timeout-protected** — they can never block Claude Code.
-- **Watchdog detects real Claude sessions** via `/proc` ancestry — the light shuts off when you close Claude.
-- **WPF native window** renders true transparent, always-on-top dots on Windows.
+![demo](demo.png)
 
-## Requirements
+三个彩色圆点悬浮在屏幕**左上角**，位于**所有窗口之上**——即使全屏浏览器或 IDE 也遮挡不住。打开 Claude Code 自动出现，关闭后自动消失。
 
-- **Windows 10/11** with **WSL2**
-- **WSLg** enabled
-- **Claude Code** installed in WSL
-- Python 3 (stdlib only — no extra packages needed)
+## 工作原理
 
-## Quick Start
+```
+Claude Code hooks ──写入──▶  state 文件 (busy|wait|done|idle)
+watchdog.py        ──写入──▶  alive 心跳 (时间戳)
 
-### 1. Install
+PowerShell/WPF     ──读取──▶  两个文件，渲染三灯
+(始终置顶)
+```
+
+- **Hook 全部异步 + 超时保护** — 永远不会卡死 Claude Code
+- **Watchdog 通过 `/proc` 父链检测** — 关闭 Claude Code 后灯自动消失
+- **WPF 原生窗口** — 真正的透明背景 + Windows 原生置顶
+
+## 环境要求
+
+- **Windows 10/11** + **WSL2**
+- **WSLg** 已启用
+- **Claude Code** 已安装在 WSL 中
+- Python 3（仅用标准库，无需额外安装）
+
+## 快速开始
+
+### 1. 安装
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cc-statuslight.git ~/.claude/statuslight
+git clone https://github.com/1829317945/claude-code-statuslight.git ~/.claude/statuslight
 ```
 
-### 2. Register Claude Code hooks
+### 2. 注册 Claude Code Hooks
 
-Add to `~/.claude/settings.json`:
+在 `~/.claude/settings.json` 中添加：
 
 ```json
 {
@@ -81,52 +85,118 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-### 3. Restart Claude Code
+### 3. 重启 Claude Code
 
-Close and reopen Claude Code — three dots appear at the top-left of your screen.
+Hooks 在会话启动时加载。关闭并重新打开 Claude Code，左上角即出现三个圆点。
 
-## Manual Control
+## 手动控制
 
 ```bash
-~/.claude/statuslight/launch.sh          # start the display
-~/.claude/statuslight/launch.sh stop     # stop everything
+~/.claude/statuslight/launch.sh          # 启动显示
+~/.claude/statuslight/launch.sh stop     # 停止一切
 
-# Test states manually:
-~/.claude/statuslight/set-state.sh busy   # yellow solid
-~/.claude/statuslight/set-state.sh wait   # red blinking
-~/.claude/statuslight/set-state.sh done   # green flash x6
-~/.claude/statuslight/set-state.sh idle   # all dim
+# 手动测试各状态：
+~/.claude/statuslight/set-state.sh busy   # 黄灯常亮
+~/.claude/statuslight/set-state.sh wait   # 红灯闪烁
+~/.claude/statuslight/set-state.sh done   # 绿灯闪6次
+~/.claude/statuslight/set-state.sh idle   # 三灯全暗
 ```
+
+## 状态对照
+
+| 状态 | 红灯(上) | 黄灯(中) | 绿灯(下) | 含义 |
+|------|---------|---------|---------|------|
+| `idle` | 暗 | 暗 | 暗 | 等待输入 |
+| `busy` | 暗 | **常亮** | 暗 | AI 思考中 |
+| `wait` | **闪烁** | 暗 | 暗 | 需要授权 |
+| `done` | 暗 | 暗 | **闪6次→常亮** | 任务完成 |
+
+## 文件说明
+
+| 文件 | 职责 | 运行位置 |
+|------|------|----------|
+| `set-state.sh` | Hook 入口，原子写入状态 | WSL |
+| `watchdog.py` | 存活检测，写心跳，Claude 退出后自停 | WSL |
+| `statuslight.ps1` | WPF 显示器，渲染三灯，始终置顶 | Windows |
+| `launch.sh` | 生命周期管理，启停 watchdog + 显示器 | WSL |
+| `xcblibs/` | WSLg 兼容所需的 XCB 辅助库 | WSL |
+
+## 架构决策
+
+### 为什么用 Windows 原生 (WPF) 而不是 WSLg GTK/Qt？
+WSLg 的置顶只在 WSLg 窗口之间有效，浏览器/VS Code 仍会遮挡。WPF 的 `TopMost = $true` 是真正的 Windows 系统级置顶。
+
+### 为什么用 `/proc` 父链检测而不是 `pgrep`？
+Claude Code 会常驻 `daemon run` 后台进程。简单的 `pgrep -f claude` 会永久匹配这些进程，导致灯永远不灭。Watchdog 遍历父链排除 daemon 后代，只计算真正的交互式会话。
+
+### 为什么 Hook 必须异步？
+同步 hook 会阻塞 Claude Code。所有状态灯 hook 使用 `"async": true` 并设置 5-10 秒超时，绝不拖慢 Claude。
+
+## License
+
+MIT — 详见 [LICENSE](LICENSE)。
+
+---
+
+<span id="english"></span>
+
+# Claude Code StatusLight
+
+> [中文](#) | English
+
+A desktop traffic-light indicator showing Claude Code's real-time status — always visible, always on top.
+
+```
+🔴 ── Red blinking   = Needs your permission
+🟡 ── Yellow solid   = AI thinking / running
+🟢 ── Green flash x6 = Task complete
+```
+
+Three colored dots float at the screen top-left, **above all windows**. Auto-appears when Claude Code opens, auto-disappears when it closes.
+
+## How It Works
+
+```
+Claude Code hooks ──write──▶  state file (busy|wait|done|idle)
+watchdog.py        ──write──▶  alive heartbeat
+
+PowerShell/WPF     ──reads──▶  both files, renders 3 dots
+(always-on-top)
+```
+
+## Requirements
+
+- Windows 10/11 + WSL2 + WSLg
+- Claude Code in WSL
+- Python 3 (stdlib only)
+
+## Quick Start
+
+```bash
+git clone https://github.com/1829317945/claude-code-statuslight.git ~/.claude/statuslight
+```
+
+Then add hooks to `~/.claude/settings.json` (see Chinese section above for the full JSON) and restart Claude Code.
 
 ## State Reference
 
-| State | Red (top) | Yellow (middle) | Green (bottom) | Meaning |
-|-------|-----------|-----------------|----------------|---------|
-| `idle` | dim | dim | dim | Waiting for input |
-| `busy` | dim | **bright** | dim | Claude is thinking |
-| `wait` | **blinking** | dim | dim | Needs permission |
-| `done` | dim | dim | **flash x6 then solid** | Task complete |
-
-## Files
-
-| File | Role | Runtime |
-|------|------|---------|
-| `set-state.sh` | Hook entry — atomic write to state file | WSL |
-| `watchdog.py` | Liveness detection — writes heartbeat, exits when Claude is gone | WSL |
-| `statuslight.ps1` | WPF display — renders three dots, always on top | Windows |
-| `launch.sh` | Lifecycle manager — start/stop watchdog + display | WSL |
-| `xcblibs/` | XCB helper libraries for WSLg compatibility | WSL |
+| State | Red (top) | Yellow (middle) | Green (bottom) |
+|-------|-----------|-----------------|----------------|
+| `idle` | dim | dim | dim |
+| `busy` | dim | **bright** | dim |
+| `wait` | **blinking** | dim | dim |
+| `done` | dim | dim | **flash x6→solid** |
 
 ## Architecture Decisions
 
-### Why Windows native (WPF) instead of WSLg GTK/Qt?
-WSLg's `_NET_WM_STATE_ABOVE` only works among WSLg windows — a browser or VS Code will cover a WSLg window. WPF's `TopMost = $true` is true Windows always-on-top.
+### Why WPF instead of WSLg GTK/Qt?
+WSLg's always-on-top only works among WSLg windows. WPF `TopMost = $true` is true system-level, covering browsers and IDEs.
 
-### Why `/proc` ancestry detection instead of `pgrep`?
-Claude Code keeps a `daemon run` background process with spare sessions. Simple `pgrep -f claude` would match these forever. The watchdog walks the parent chain to exclude daemon-spawned processes.
+### Why `/proc` ancestry detection?
+Claude Code runs a persistent `daemon run` background process. Simple `pgrep` would match it forever. The watchdog walks the parent chain to count only real interactive sessions.
 
 ### Why async hooks?
-All status-light hooks use `"async": true` with a 5–10s timeout — they can never slow down or hang Claude Code.
+Synchronous hooks block Claude Code. All status-light hooks use `"async": true` with 5–10s timeouts.
 
 ## License
 
